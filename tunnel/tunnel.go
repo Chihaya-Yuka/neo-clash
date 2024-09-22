@@ -23,7 +23,7 @@ var (
 type Tunnel struct {
 	queue      *channels.InfiniteChannel
 	rules      []C.Rule
-	proxys     map[string]C.Proxy
+	proxies    map[string]C.Proxy
 	observable *observable.Observable
 	logCh      chan interface{}
 	configLock *sync.RWMutex
@@ -39,50 +39,46 @@ func (t *Tunnel) Traffic() *C.Traffic {
 }
 
 func (t *Tunnel) Config() ([]C.Rule, map[string]C.Proxy) {
-	return t.rules, t.proxys
+	t.configLock.RLock()
+	defer t.configLock.RUnlock()
+	return t.rules, t.proxies
 }
 
 func (t *Tunnel) Log() *observable.Observable {
 	return t.observable
 }
 
-func (t *Tunnel) UpdateConfig() (err error) {
+func (t *Tunnel) UpdateConfig() error {
 	cfg, err := C.GetConfig()
 	if err != nil {
-		return
+		return err
 	}
 
-	// empty proxys and rules
-	proxys := make(map[string]C.Proxy)
+	proxies := make(map[string]C.Proxy)
 	rules := []C.Rule{}
 
 	proxysConfig := cfg.Section("Proxy")
 	rulesConfig := cfg.Section("Rule")
 	groupsConfig := cfg.Section("Proxy Group")
 
-	// parse proxy
+	// Parse proxies
 	for _, key := range proxysConfig.Keys() {
 		proxy := strings.Split(key.Value(), ",")
-		if len(proxy) == 0 {
+		if len(proxy) < 5 {
 			continue
 		}
 		proxy = trimArr(proxy)
-		switch proxy[0] {
-		// ss, server, port, cipter, password
-		case "ss":
-			if len(proxy) < 5 {
-				continue
-			}
+		if proxy[0] == "ss" {
 			ssURL := fmt.Sprintf("ss://%s:%s@%s:%s", proxy[3], proxy[4], proxy[1], proxy[2])
 			ss, err := adapters.NewShadowSocks(key.Name(), ssURL, t.traffic)
 			if err != nil {
 				return err
 			}
-			proxys[key.Name()] = ss
+			proxies[key.Name()] = ss
 		}
 	}
 
-	// parse rules
+	// Parse rules
 	for _, key := range rulesConfig.Keys() {
 		rule := strings.Split(key.Name(), ",")
 		if len(rule) < 3 {
@@ -103,21 +99,20 @@ func (t *Tunnel) UpdateConfig() (err error) {
 		}
 	}
 
-	// parse proxy groups
+	// Parse proxy groups
 	for _, key := range groupsConfig.Keys() {
-		rule := strings.Split(key.Value(), ",")
-		if len(rule) < 4 {
+		group := strings.Split(key.Value(), ",")
+		if len(group) < 4 {
 			continue
 		}
-		rule = trimArr(rule)
-		switch rule[0] {
-		case "url-test":
-			proxyNames := rule[1 : len(rule)-2]
-			delay, _ := strconv.Atoi(rule[len(rule)-1])
-			url := rule[len(rule)-2]
+		group = trimArr(group)
+		if group[0] == "url-test" {
+			proxyNames := group[1 : len(group)-2]
+			delay, _ := strconv.Atoi(group[len(group)-1])
+			url := group[len(group)-2]
 			var ps []C.Proxy
 			for _, name := range proxyNames {
-				if p, ok := proxys[name]; ok {
+				if p, ok := proxies[name]; ok {
 					ps = append(ps, p)
 				}
 			}
@@ -126,26 +121,25 @@ func (t *Tunnel) UpdateConfig() (err error) {
 			if err != nil {
 				return fmt.Errorf("Config error: %s", err.Error())
 			}
-			proxys[key.Name()] = adapter
+			proxies[key.Name()] = adapter
 		}
 	}
 
-	// init proxy
-	proxys["DIRECT"] = adapters.NewDirect(t.traffic)
-	proxys["REJECT"] = adapters.NewReject()
+	// Add default proxies
+	proxies["DIRECT"] = adapters.NewDirect(t.traffic)
+	proxies["REJECT"] = adapters.NewReject()
 
 	t.configLock.Lock()
 	defer t.configLock.Unlock()
 
-	// stop url-test
-	for _, elm := range t.proxys {
-		urlTest, ok := elm.(*adapters.URLTest)
-		if ok {
+	// Stop existing URL tests
+	for _, proxy := range t.proxies {
+		if urlTest, ok := proxy.(*adapters.URLTest); ok {
 			urlTest.Close()
 		}
 	}
 
-	t.proxys = proxys
+	t.proxies = proxies
 	t.rules = rules
 
 	return nil
@@ -164,14 +158,14 @@ func (t *Tunnel) handleConn(localConn C.ServerAdapter) {
 	defer localConn.Close()
 	addr := localConn.Addr()
 	proxy := t.match(addr)
-	remoConn, err := proxy.Generator(addr)
+	remoteConn, err := proxy.Generator(addr)
 	if err != nil {
 		t.logCh <- newLog(WARNING, "Proxy connect error: %s", err.Error())
 		return
 	}
-	defer remoConn.Close()
+	defer remoteConn.Close()
 
-	localConn.Connect(remoConn)
+	localConn.Connect(remoteConn)
 }
 
 func (t *Tunnel) match(addr *C.Addr) C.Proxy {
@@ -180,23 +174,21 @@ func (t *Tunnel) match(addr *C.Addr) C.Proxy {
 
 	for _, rule := range t.rules {
 		if rule.IsMatch(addr) {
-			a, ok := t.proxys[rule.Adapter()]
-			if !ok {
-				continue
+			if proxy, ok := t.proxies[rule.Adapter()]; ok {
+				t.logCh <- newLog(INFO, "%v match %s using %s", addr.String(), rule.RuleType().String(), rule.Adapter())
+				return proxy
 			}
-			t.logCh <- newLog(INFO, "%v match %s using %s", addr.String(), rule.RuleType().String(), rule.Adapter())
-			return a
 		}
 	}
 	t.logCh <- newLog(INFO, "%v doesn't match any rule using DIRECT", addr.String())
-	return t.proxys["DIRECT"]
+	return t.proxies["DIRECT"]
 }
 
 func newTunnel() *Tunnel {
 	logCh := make(chan interface{})
 	tunnel := &Tunnel{
 		queue:      channels.NewInfiniteChannel(),
-		proxys:     make(map[string]C.Proxy),
+		proxies:    make(map[string]C.Proxy),
 		observable: observable.NewObservable(logCh),
 		logCh:      logCh,
 		configLock: &sync.RWMutex{},
@@ -212,4 +204,12 @@ func GetInstance() *Tunnel {
 		tunnel = newTunnel()
 	})
 	return tunnel
+}
+
+// Helper function to trim spaces from array elements
+func trimArr(arr []string) []string {
+	for i := range arr {
+		arr[i] = strings.TrimSpace(arr[i])
+	}
+	return arr
 }
