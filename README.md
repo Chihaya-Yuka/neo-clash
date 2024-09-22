@@ -1,7 +1,7 @@
 <h1 align="center">
   <img src="https://raw.githubusercontent.com/Elegybackup/clash-backup/main/docs/logo.png" alt="Clash" width="200">
   <br>
-  Clash
+  Neo-Clash
   <br>
 </h1>
 
@@ -21,13 +21,9 @@
   </a>
 </p>
 
-## 前言
+## Memo
 
-- 由于作者已经跑路，当前为Clash最新备份
-- 文件已上传完整，若无法使用，请提交Issues
-- 当前备份号（202311112035）
-- 若侵犯的您的权利，请通过[issues](https://github.com/Elegycloud/clash-backup/issues)联系我删除本仓库！
-- 请各位且行且珍惜！
+这是 Clash 的发行版，它正在持续维护。
 
 ## Features
 
