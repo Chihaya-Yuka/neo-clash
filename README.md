@@ -17,7 +17,7 @@
   </a>
   <a href="https://app.fossa.io/projects/git%2Bgithub.com%2FElegybackup%2Fclash-backup?ref=badge_shield" alt="FOSSA Status"><img src="https://app.fossa.io/api/projects/git%2Bgithub.com%2FDreamacro%2Fclash.svg?type=shield"/></a>
   <a href="https://github.com/Elegybackup/clash-backup">
-    <img src="https://img.shields.io/github/release/Dreamacro/clash/all.svg?style=flat-square">
+    <img src="https://img.shields.io/github/release/Chihaya-Yuka/neo-clash/all.svg?style=flat-square">
   </a>
 </p>
 
@@ -36,10 +36,8 @@
 You can build from source:
 
 ```sh
-go get -u -v github.com/Elegycloud/clash-backup
+go get -u -v github.com/Chihaya-Yuka/neo-clash
 ```
-
-Pre-built binaries are available: [release](https://github.com/Elegycloud/clash-backup)
 
 Requires Go >= 1.10.
 
@@ -54,10 +52,6 @@ In the case of [pm2](https://github.com/Unitech/pm2), we can start the daemon th
 ```sh
 pm2 start clash
 ```
-
-If you have Docker installed, you can run clash directly using `docker-compose`.
-
-[Run clash in docker](https://github.com/Elegycloud/clash-backup/wiki/Run-clash-in-docker)
 
 ## Config
 
@@ -93,9 +87,3 @@ GEOIP,CN,DIRECT
 FINAL,,Proxy # note: there is two ","
 ```
 
-## License
-[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FDreamacro%2Fclash.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2FDreamacro%2Fclash?ref=badge_large)
-
-## TODO
-
-- [ ] Complementing the necessary rule operators
